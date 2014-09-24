@@ -16,30 +16,33 @@
 #
 
 
-AF_INET = None
-SOCK_STREAM = None
-SOCK_DGRAM = None
-
-_GLOBAL_DEFAULT_TIMEOUT = object()
 
 
-class error(OSError):
-  pass
-
-class herror(error):
-  pass
-
-class gaierror(error):
-  pass
-
-class timeout(error):
-  pass
 
 
-def _fileobject(fp, mode='rb', bufsize=-1, close=False):
-  """Assuming that the argument is a StringIO or file instance."""
-  if not hasattr(fp, 'fileno'):
-    fp.fileno = lambda: None
-  return fp
 
-ssl = None
+
+
+
+
+
+
+
+
+
+"""Base operation class."""
+
+
+__all__ = ['Operation']
+
+
+class Operation(object):
+  """Base class for all mapper operations.
+
+  All operations should implement __call__(self, ctx) function, which will be
+  called upon operation yield.
+  """
+
+  def __call__(self, ctx):
+    raise NotImplementedError("__call__() not implemented in %s" %
+                              self.__class__)

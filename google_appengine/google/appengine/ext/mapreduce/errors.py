@@ -14,3 +14,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""Map Reduce framework errors."""
+
+
+
+class Error(Exception):
+  """Base-class for exceptions in this module."""
+
+
+class BadYamlError(Error):
+  """Raised when the mapreduce.yaml file is invalid."""
+
+
+class MissingYamlError(BadYamlError):
+  """Raised when the mapreduce.yaml file could not be found."""
+
+
+class MultipleDocumentsInMrYaml(BadYamlError):
+  """There's more than one document in mapreduce.yaml file."""
