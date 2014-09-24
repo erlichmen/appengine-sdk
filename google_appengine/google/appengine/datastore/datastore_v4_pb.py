@@ -8225,55 +8225,55 @@ class DatastoreV4Service(_server_stub_base_class):
     See BaseRpcServer in rpcserver.py for details.
     """
     rpcserver._GetHandlerDecorator(
-        getattr(self.BeginTransaction, 'im_func' if str is bytes else '__func__'),
+        getattr(self.BeginTransaction, '__func__'),
         BeginTransactionRequest,
         BeginTransactionResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.Rollback, 'im_func' if str is bytes else '__func__'),
+        getattr(self.Rollback, '__func__'),
         RollbackRequest,
         RollbackResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.Commit, 'im_func' if str is bytes else '__func__'),
+        getattr(self.Commit, '__func__'),
         CommitRequest,
         CommitResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.RunQuery, 'im_func' if str is bytes else '__func__'),
+        getattr(self.RunQuery, '__func__'),
         RunQueryRequest,
         RunQueryResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.ContinueQuery, 'im_func' if str is bytes else '__func__'),
+        getattr(self.ContinueQuery, '__func__'),
         ContinueQueryRequest,
         ContinueQueryResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.Lookup, 'im_func' if str is bytes else '__func__'),
+        getattr(self.Lookup, '__func__'),
         LookupRequest,
         LookupResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.AllocateIds, 'im_func' if str is bytes else '__func__'),
+        getattr(self.AllocateIds, '__func__'),
         AllocateIdsRequest,
         AllocateIdsResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.Get, 'im_func' if str is bytes else '__func__'),
+        getattr(self.Get, '__func__'),
         LookupRequest,
         LookupResponse,
         None,
         'INTEGRITY')
     rpcserver._GetHandlerDecorator(
-        getattr(self.Write, 'im_func' if str is bytes else '__func__'),
+        getattr(self.Write, '__func__'),
         WriteRequest,
         CommitResponse,
         None,
