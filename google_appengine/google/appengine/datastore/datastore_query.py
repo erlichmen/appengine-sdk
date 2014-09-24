@@ -907,6 +907,10 @@ class _BoundingCircleFilter(_SinglePropertyFilter):
     self._lat_lng = geo_util.LatLng(latitude, longitude)
     self._radius_meters = radius_meters
 
+    if not radius_meters >= 0:
+      raise datastore_errors.BadArgumentError(
+          'invalid radius: %r' % radius_meters)
+
   @classmethod
   def _from_v4_pb(cls, bounding_circle_v4_pb):
     return _BoundingCircleFilter(bounding_circle_v4_pb.property().name(),
@@ -918,6 +922,7 @@ class _BoundingCircleFilter(_SinglePropertyFilter):
     return self._property_name
 
   def _apply_to_value(self, value):
+
 
 
     if value[0] != entity_pb.PropertyValue.kPointValueGroup:
@@ -977,6 +982,7 @@ class _BoundingBoxFilter(_SinglePropertyFilter):
     return self._property_name
 
   def _apply_to_value(self, value):
+
 
 
     if value[0] != entity_pb.PropertyValue.kPointValueGroup:

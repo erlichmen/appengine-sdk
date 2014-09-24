@@ -1583,8 +1583,8 @@ def _CopySortExpressionToProtocolBuffer(sort_expression, pb):
     pb.set_default_value_text(sort_expression.default_value.encode('utf-8'))
   elif (isinstance(sort_expression.default_value, datetime.datetime) or
         isinstance(sort_expression.default_value, datetime.date)):
-    pb.set_default_value_numeric(
-        search_util.EpochTime(sort_expression.default_value))
+    pb.set_default_value_text(str(
+        search_util.EpochTime(sort_expression.default_value)))
   else:
     pb.set_default_value_numeric(sort_expression.default_value)
   return pb
@@ -2816,7 +2816,7 @@ class Index(object):
     The following code fragment shows how to use a results cursor
 
       cursor = results.cursor
-      for result in response:
+      for result in results:
          # process result
 
       results = index.search(
