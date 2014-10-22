@@ -17,6 +17,7 @@
 """Manage the lifecycle of runtime processes and dispatch requests to them."""
 
 
+
 import collections
 import logging
 import threading
@@ -220,6 +221,15 @@ class Instance(object):
         total_latency = sum(
             end - start for (start, end) in self._request_history)
         return total_latency / len(self._request_history)
+
+  def get_log_file_names(self):
+    return self._runtime_proxy.get_instance_log_file_names()
+
+  def get_logs_size(self, log_file_name):
+    return self._runtime_proxy.get_instance_logs_size(log_file_name)
+
+  def get_logs(self, log_file_name, count):
+    return self._runtime_proxy.get_instance_logs(log_file_name, count)
 
   def get_qps_60s(self):
     """Returns the average queries-per-second over the last 60 seconds."""

@@ -33,8 +33,8 @@ class MtimeFileWatcher(object):
     self._directory = directory
     self._quit_event = threading.Event()
     self._filename_to_mtime = None
-    self._has_changes = False
-    self._has_changes_lock = threading.Lock()
+    self._changes = set()
+    self._changes_lock = threading.Lock()
     self._watcher_thread = threading.Thread(target=self._watch_changes)
     self._watcher_thread.daemon = True
 
@@ -46,35 +46,43 @@ class MtimeFileWatcher(object):
     """Stop watching a directory for changes."""
     self._quit_event.set()
 
-  def has_changes(self):
-    """Returns True if the watched directory has changed since the last call.
+  def changes(self):
+    """Returns the set of changed paths since the last call.
 
     start() must be called before this method.
 
     Returns:
-      Returns True if the watched directory has changed since the last call to
-      has_changes or, if has_changes has never been called, since start was
-      called.
+      Returns the set of file paths changes if the watched directory has changed
+      since the last call to changes or, if has_changes has never been called,
+      since start was called.
     """
-    with self._has_changes_lock:
-      has_changes = self._has_changes
-      self._has_changes = False
-    return has_changes
+    with self._changes_lock:
+      changes = self._changes
+      self._changes = set()
+      return changes
 
   def _watch_changes(self):
     while not self._quit_event.wait(1):
       self._check_for_changes()
 
   def _check_for_changes(self):
-    if self._has_changed_paths():
-      with self._has_changes_lock:
-        self._has_changes = True
+    new_changes = self._changed_paths()
+    if new_changes:
+      with self._changes_lock:
+        self._changes |= new_changes
 
-  def _has_changed_paths(self):
+  def _changed_paths(self):
+    """Returns the paths changed since last call."""
     self._filename_to_mtime, old_filename_to_mtime = (
         self._generate_filename_to_mtime(), self._filename_to_mtime)
-    return (old_filename_to_mtime is not None and
-            self._filename_to_mtime != old_filename_to_mtime)
+
+    # Emulates the original "ignore the first round" behavior.
+    if old_filename_to_mtime is None:
+      return set()
+
+    diff_items = set(self._filename_to_mtime.items()).symmetric_difference(
+        old_filename_to_mtime.items())
+    return {filename for filename, _ in diff_items}
 
   def _generate_filename_to_mtime(self):
     filename_to_mtime = {}

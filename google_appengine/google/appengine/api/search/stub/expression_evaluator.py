@@ -101,7 +101,7 @@ class ExpressionEvaluator(object):
         ExpressionParser.LOG: self._Unsupported('log'),
         ExpressionParser.MAX: self._Max,
         ExpressionParser.MIN: self._Min,
-        ExpressionParser.POW: self._Unsupported('pow'),
+        ExpressionParser.POW: self._Pow,
         ExpressionParser.SNIPPET: self._Snippet,
         ExpressionParser.SWITCH: self._Unsupported('switch'),
         }
@@ -151,6 +151,13 @@ class ExpressionEvaluator(object):
       raise _ExpressionError('Max cannot be converted to a text type')
     return max(self._Eval(
         node, document_pb.FieldValue.NUMBER) for node in nodes)
+
+  def _Pow(self, return_type, *nodes):
+    if return_type == search_util.EXPRESSION_RETURN_TYPE_TEXT:
+      raise _ExpressionError('Pow cannot be converted to a text type')
+    lhs, rhs = nodes
+    return pow(self._Eval(lhs, document_pb.FieldValue.NUMBER),
+               self._Eval(rhs, document_pb.FieldValue.NUMBER))
 
   def _Distance(self, return_type, *nodes):
     if return_type == search_util.EXPRESSION_RETURN_TYPE_TEXT:

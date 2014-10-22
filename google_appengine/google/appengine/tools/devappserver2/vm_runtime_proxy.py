@@ -16,9 +16,12 @@
 #
 """Manages a VM Runtime process running inside of a docker container."""
 
+import httplib
+import json
 import logging
 import os
 import socket
+import urllib
 
 import google
 
@@ -76,9 +79,12 @@ class VMRuntimeProxy(instance.RuntimeProxy):
   """Manages a VM Runtime process running inside of a docker container."""
 
   DEFAULT_DEBUG_PORT = 5005
+  _LOG_GETTER_IMAGE_NAME = 'log_getter'
+  _LOG_GETTER_SERVER_LINK_NAME = 'log_server'
 
   def __init__(self, docker_client, runtime_config_getter,
-               module_configuration, default_port=8080, port_bindings=None,
+               module_configuration, log_server_container=None,
+               default_port=8080, port_bindings=None,
                additional_environment=None):
     """Initializer for VMRuntimeProxy.
 
@@ -90,6 +96,9 @@ class VMRuntimeProxy(instance.RuntimeProxy):
       module_configuration: An application_configuration.ModuleConfiguration
           instance respresenting the configuration of the module that owns the
           runtime.
+      log_server_container: A containers.Container instance of LogServer
+          container or None and service for getting logs from this container
+          becomes unavailable.
       default_port: int, main port inside of the container that instance is
           listening on.
       port_bindings: dict, Additional port bindings from the container.
@@ -104,6 +113,7 @@ class VMRuntimeProxy(instance.RuntimeProxy):
     self._default_port = default_port
     self._port_bindings = port_bindings
     self._additional_environment = additional_environment
+    self._log_server_container = log_server_container
     self._container = None
     self._proxy = None
 
@@ -131,13 +141,79 @@ class VMRuntimeProxy(instance.RuntimeProxy):
     return self._proxy.handle(environ, start_response, url_map, match,
                               request_id, request_type)
 
-  def _get_instance_logs(self):
-    # TODO: Handle docker container's logs
-    return ''
+  def _connect_to_log_server(self, path, query_params):
+    """Sends request to log_server container via http.
+
+    Args:
+      path: string containing path to make a request.
+      query_params: dict with essential parameters for request.
+
+    Returns:
+      A response from a log_server.
+    """
+
+    log_server_container = self._log_server_container
+    host, port = log_server_container.host, log_server_container.port
+    connection = httplib.HTTPConnection(host=host, port=port)
+    runtime_config = self._runtime_config_getter()
+    params = {
+        'instance_id': runtime_config.instance_id,
+        'module_name': self._module_configuration.module_name}
+    for key, value in query_params.iteritems():
+      params[key] = value
+    params = urllib.urlencode(params)
+    headers = {'Content-type': 'application/x-www-form-urlencoded',
+               'Accept': 'text/plain'}
+    connection.request('GET', path, params, headers)
+    response = connection.getresponse()
+    logging.debug('Response from log server: %s %s', response.status,
+                  response.reason)
+    data = response.read()
+    connection.close()
+    return json.loads(data)
+
+  def get_instance_log_file_names(self):
+    if not self._log_server_container:
+      return []
+    return self._connect_to_log_server('/log_file_names', {})
+
+  def get_instance_logs_size(self, log_file_name):
+    if not self._log_server_container:
+      return 0
+    return self._connect_to_log_server('/count',
+                                       {'log_file_name': log_file_name})
+
+  def get_instance_logs(self, log_file_name, count):
+    if not self._log_server_container:
+      return []
+    return self._connect_to_log_server('/', {'log_file_name': log_file_name,
+                                             'count': count})
 
   def _instance_died_unexpectedly(self):
     # TODO: Check if container is still up and running
     return False
+
+  def _build_logs_container(self, external_logs_path, internal_logs_path,
+                            instance_id):
+    """Builds logs container for current instance."""
+
+    environment = {
+        'LOGS_DIR': internal_logs_path,
+        'SERVER_NAME': self._LOG_GETTER_SERVER_LINK_NAME,
+        'MODULE_NAME': self._module_configuration.module_name,
+        'INSTANCE_ID': instance_id,
+    }
+    return containers.Container(
+        self._docker_client,
+        containers.ContainerOptions(
+            image_opts=containers.ImageOptions(tag=self._LOG_GETTER_IMAGE_NAME),
+            environment=environment,
+            volumes={
+                external_logs_path: {'bind': internal_logs_path}
+            },
+            links={self._log_server_container.name:
+                   self._LOG_GETTER_SERVER_LINK_NAME},
+        ))
 
   def _escape_domain(self, application_external_name):
     return application_external_name.replace(':', '.')
@@ -223,6 +299,7 @@ class VMRuntimeProxy(instance.RuntimeProxy):
         self._module_configuration.module_name,
         self._module_configuration.major_version,
         runtime_config.instance_id)
+    internal_logs_path = '/var/log/app_engine'
     container_name = _DOCKER_CONTAINER_NAME_FORMAT.format(
         image_name=image_name,
         instance_id=runtime_config.instance_id)
@@ -237,12 +314,22 @@ class VMRuntimeProxy(instance.RuntimeProxy):
             port_bindings=port_bindings,
             environment=environment,
             volumes={
-                external_logs_path: {'bind': '/var/log/app_engine'}
+                external_logs_path: {'bind': internal_logs_path}
             },
             name=container_name
         ))
 
+    if self._log_server_container:
+      self._logs_container = self._build_logs_container(
+          external_logs_path, internal_logs_path, runtime_config.instance_id)
+
     self._container.Start()
+    if self._log_server_container:
+      try:
+        self._logs_container.Start()
+      except containers.ImageError:
+        logging.warning('Image \'log_server\' is not found.'
+                        'Showing logs in admin console is disabled.')
 
     # Print the debug information before connecting to the container
     # as debugging might break the runtime during initialization, and
@@ -256,7 +343,7 @@ class VMRuntimeProxy(instance.RuntimeProxy):
     self._proxy = http_proxy.HttpProxy(
         host=self._container.host, port=self._container.port,
         instance_died_unexpectedly=self._instance_died_unexpectedly,
-        instance_logs_getter=self._get_instance_logs,
+        instance_logs_getter=self.get_instance_logs,
         error_handler_file=application_configuration.get_app_error_file(
             self._module_configuration))
 
@@ -273,6 +360,8 @@ class VMRuntimeProxy(instance.RuntimeProxy):
   def quit(self):
     """Kills running container and removes it."""
     self._container.Stop()
+    if self._log_server_container:
+      self._logs_container.Stop()
 
   def PortBinding(self, port):
     """Get the host binding of a container port.

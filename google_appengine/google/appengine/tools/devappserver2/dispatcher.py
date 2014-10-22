@@ -661,6 +661,10 @@ class Dispatcher(request_info.Dispatcher):
     if not hostname or hostname == default_address:
       return self._module_for_request(path), None
 
+
+
+
+
     default_address_offset = hostname.find(default_address)
     if default_address_offset > 0:
       prefix = hostname[:default_address_offset - 1]

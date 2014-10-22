@@ -82,11 +82,12 @@ class ImageOptions(namedtuple('ImageOptionsT',
 class ContainerOptions(namedtuple('ContainerOptionsT',
                                   ['image_opts', 'port', 'port_bindings',
                                    'environment', 'volumes', 'volumes_from',
-                                   'name'])):
+                                   'links', 'name'])):
   """Options for creating and running Docker Containers."""
 
   def __new__(cls, image_opts=None, port=None, port_bindings=None,
-              environment=None, volumes=None, volumes_from=None, name=None):
+              environment=None, volumes=None, volumes_from=None, links=None,
+              name=None):
     """This method is redefined to provide default values for namedtuple.
 
     Args:
@@ -100,6 +101,7 @@ class ContainerOptions(namedtuple('ContainerOptionsT',
       environment: dict, Environment variables.
       volumes: dict,  Volumes to mount from the host system.
       volumes_from: list, Volumes from the specified container(s).
+      links: dict, Links to the specified container(s).
       name: str, Name of a container. Needed for data containers.
 
     Returns:
@@ -108,7 +110,7 @@ class ContainerOptions(namedtuple('ContainerOptionsT',
     return super(ContainerOptions, cls).__new__(
         cls, image_opts=image_opts, port=port, port_bindings=port_bindings,
         environment=environment, volumes=volumes, volumes_from=volumes_from,
-        name=name)
+        name=name, links=links)
 
 
 class Error(Exception):
@@ -234,7 +236,7 @@ class Image(BaseImage):
       if not lines:
         return ''
       return ('Full Image Build Log:\n%s' %
-              ''.join(l.get(_STREAM) for l in lines))
+              ''.join(l.get(_STREAM, '') for l in lines))
 
     success_message = log_lines[-1].get(_STREAM)
     if success_message:
@@ -370,7 +372,6 @@ class Container(object):
     self._id = None
     self._host = GetDockerHost(self._docker_client)
     self._container_host = None
-    self._port = None
     # Port bindings will be set to a dictionary mapping exposed ports
     # to the interface they are bound to. This will be populated from
     # the container options passed when the container is started.
@@ -400,7 +401,7 @@ class Container(object):
       port_bindings[self._container_opts.port] = port_bindings.get(
           self._container_opts.port)
 
-    self._id = self._docker_client.create_container(
+    response = self._docker_client.create_container(
         image=self._image.id, hostname=None, user=None, detach=True,
         stdin_open=False,
         tty=False, mem_limit=0,
@@ -411,15 +412,19 @@ class Container(object):
         dns=None,
         network_disabled=False,
         name=self.name)
-    # create_container returns a dict sometimes.
-    if isinstance(self.id, dict):
-      self._id = self.id.get('Id')
+
+    self._id = response.get('Id')
+    warnings = response.get('Warnings')
+    if warnings:
+      logging.warning(warnings)
+
     logging.info('Container %s created.', self.id)
 
     self._docker_client.start(
         self.id,
         port_bindings=port_bindings,
         binds=self._container_opts.volumes,
+        links=self._container_opts.links,
         # In the newer API version volumes_from got moved from
         # create_container to start. In older version volumes_from option was
         # completely broken therefore we support only passing volumes_from

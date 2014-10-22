@@ -17,6 +17,7 @@
 """Manage the lifecycle of runtime processes and dispatch requests to them."""
 
 
+
 import collections
 import cStringIO
 import functools
@@ -356,14 +357,17 @@ class Module(object):
     # Always check for config and file changes because checking also clears
     # pending changes.
     config_changes = self._module_configuration.check_for_updates()
-    has_file_changes = self._watcher.has_changes()
-
+    file_changes = self._watcher.changes()
     if application_configuration.HANDLERS_CHANGED in config_changes:
       handlers = self._create_url_handlers()
       with self._handler_lock:
         self._handlers = handlers
 
-    if has_file_changes:
+    if file_changes:
+      # a watcher returns {'-'} when it is not able to know what changed
+      # TODO: remove this when the implementations converge.
+      if file_changes != {'-'}:
+        logging.info('Detected file changes: %r', file_changes)
       self._instance_factory.files_changed()
 
     if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES:
@@ -371,7 +375,7 @@ class Module(object):
 
     self._maybe_restart_instances(
         config_changed=bool(config_changes & _RESTART_INSTANCES_CONFIG_CHANGES),
-        file_changed=has_file_changes)
+        file_changed=bool(file_changes))
 
   def __init__(self,
                module_configuration,
@@ -464,8 +468,7 @@ class Module(object):
     self._default_version_port = default_version_port
     self._port_registry = port_registry
 
-    # TODO: remove when GA.
-    if self._vm_config and self._vm_config.HasField('docker_daemon_url'):
+    if self.vm_enabled():
       self._RUNTIME_INSTANCE_FACTORIES['vm'] = (
           vm_runtime_factory.VMRuntimeInstanceFactory)
 
@@ -483,6 +486,10 @@ class Module(object):
     self._balanced_module = wsgi_server.WsgiServer(
         (self._host, self._balanced_port), self)
     self._quit_event = threading.Event()  # Set when quit() has been called.
+
+  def vm_enabled(self):
+    # TODO: change when GA
+    return self._vm_config and self._vm_config.HasField('docker_daemon_url')
 
   @property
   def name(self):
@@ -678,6 +685,12 @@ class Module(object):
         # unavailable if the connection is closed before the client can send
         # all the data. To match the behavior of production, for large files
         # < 64M read the data to prevent the client bug from being triggered.
+
+
+
+
+
+
 
         if content_length <= _MAX_UPLOAD_NO_TRIGGER_BAD_CLIENT_BYTES:
           environ['wsgi.input'].read(content_length)
@@ -1098,7 +1111,6 @@ class AutoScalingModule(Module):
                                             allow_skipped_files,
                                             threadsafe_override)
 
-
     self._process_automatic_scaling(
         self._module_configuration.automatic_scaling)
 
@@ -1473,7 +1485,6 @@ class ManualScalingModule(Module):
                automatic_restarts,
                allow_skipped_files,
                threadsafe_override):
-
     """Initializer for ManualScalingModule.
 
     Args:
@@ -1543,7 +1554,6 @@ class ManualScalingModule(Module):
                                               allow_skipped_files,
                                               threadsafe_override)
 
-
     self._process_manual_scaling(module_configuration.manual_scaling)
 
     self._instances = []  # Protected by self._condition.
@@ -1562,6 +1572,8 @@ class ManualScalingModule(Module):
 
   def start(self):
     """Start background management of the Module."""
+    if self.vm_enabled():
+      self._instance_factory.start_log_container()
     self._balanced_module.start()
     self._port_registry.add(self.balanced_port, self, None)
     if self._watcher:
@@ -1578,6 +1590,8 @@ class ManualScalingModule(Module):
 
   def quit(self):
     """Stops the Module."""
+    if self.vm_enabled():
+      self._instance_factory.stop_log_container()
     self._quit_event.set()
     self._change_watcher_thread.join()
     # The instance adjustment thread depends on the balanced module and the
@@ -1809,20 +1823,24 @@ class ManualScalingModule(Module):
     # Always check for config and file changes because checking also clears
     # pending changes.
     config_changes = self._module_configuration.check_for_updates()
-    has_file_changes = self._watcher.has_changes()
-
+    file_changes = self._watcher.changes()
     if application_configuration.HANDLERS_CHANGED in config_changes:
       handlers = self._create_url_handlers()
       with self._handler_lock:
         self._handlers = handlers
 
-    if has_file_changes:
+    if file_changes:
+      # a watcher returns {'-'} when it is not able to know what changed
+      # TODO: remove this when the implementations converge.
+      if file_changes != {'-'}:
+        logging.info('Detected file changes: %r', file_changes)
+
       self._instance_factory.files_changed()
 
     if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES:
       self._instance_factory.configuration_changed(config_changes)
 
-    if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES or has_file_changes:
+    if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES or file_changes:
       with self._instances_change_lock:
         if not self._suspended:
           self.restart()
@@ -2056,7 +2074,6 @@ class BasicScalingModule(Module):
                automatic_restarts,
                allow_skipped_files,
                threadsafe_override):
-
     """Initializer for BasicScalingModule.
 
     Args:
@@ -2373,20 +2390,20 @@ class BasicScalingModule(Module):
     # Always check for config and file changes because checking also clears
     # pending changes.
     config_changes = self._module_configuration.check_for_updates()
-    has_file_changes = self._watcher.has_changes()
+    file_changes = self._watcher.changes()
 
     if application_configuration.HANDLERS_CHANGED in config_changes:
       handlers = self._create_url_handlers()
       with self._handler_lock:
         self._handlers = handlers
 
-    if has_file_changes:
+    if file_changes:
       self._instance_factory.files_changed()
 
     if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES:
       self._instance_factory.configuration_changed(config_changes)
 
-    if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES or has_file_changes:
+    if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES or file_changes:
       self.restart()
 
   def _loop_watching_for_changes_and_idle_instances(self):
