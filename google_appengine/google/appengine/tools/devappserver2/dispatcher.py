@@ -107,8 +107,7 @@ class Dispatcher(request_info.Dispatcher):
           required configuration for local Google Cloud SQL development. If None
           then Cloud SQL will not be available.
       vm_config: A runtime_config_pb2.VMConfig instance containing
-          VM runtime-specific configuration. If vm_config does not have
-          docker_daemon_url specified all docker-related stuff is disabled.
+          VM runtime-specific configuration.
       module_to_max_instances: A mapping between a module name and the maximum
           number of instances that can be created (this overrides the settings
           found in the configuration argument) e.g.

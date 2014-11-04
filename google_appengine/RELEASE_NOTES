@@ -3,6 +3,34 @@ All rights reserved.
 
 App Engine SDK - Release Notes
 
+Version 1.9.15
+
+All
+==============================
+- Fixed an issue with Datastore stats not displaying entity counts.
+    https://code.google.com/p/googleappengine/issues/detail?id=9328
+
+Python
+==============================
+- search.GetResponse in the Search API now supports __len__.
+    https://code.google.com/p/googleappengine/issues/detail?id=10340
+- The get_access_token() method of the App Identity API now caches access
+  tokens within the instance.
+- Fixed an issue with Cloud Endpoints where multi-class Python APIs
+  that reused method names could result in incorrect API descriptors.
+    https://code.google.com/p/googleappengine/issues/detail?id=10595
+    https://code.google.com/p/googleappengine/issues/detail?id=11366
+    https://code.google.com/p/googleappengine/issues/detail?id=11373
+
+PHP
+==============================
+- Temporary uploaded files are now unlinked (deleted) if not moved. Empty
+  files not written to a temporary directory are removed.
+    http://stackoverflow.com/questions/21571418/google-app-engine-empty-form
+    -upload-field-submission-issue
+- Fixed an issue with get_define_constraints not returning a Core array.
+    https://code.google.com/p/googleappengine/issues/detail?id=11236
+
 Version 1.9.14
 
 All

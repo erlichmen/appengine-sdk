@@ -39,7 +39,7 @@ class DartVMRuntimeProxy(instance.RuntimeProxy):
   """
 
   def __init__(self, docker_client, runtime_config_getter,
-               module_configuration, log_server_container=None,
+               module_configuration,
                default_port=8080, port_bindings=None):
     """Initializer for VMRuntimeProxy.
 
@@ -51,8 +51,6 @@ class DartVMRuntimeProxy(instance.RuntimeProxy):
       module_configuration: An application_configuration.ModuleConfiguration
           instance respresenting the configuration of the module that owns the
           runtime.
-      log_server_container: A containers.Container instance of LogServer
-          container.
       default_port: int, main port inside of the container that instance is
           listening on.
       port_bindings: dict, Additional port bindings from the container.
@@ -90,7 +88,6 @@ class DartVMRuntimeProxy(instance.RuntimeProxy):
         docker_client=docker_client,
         runtime_config_getter=runtime_config_getter,
         module_configuration=module_configuration,
-        log_server_container=log_server_container,
         default_port=default_port,
         port_bindings=port_bindings,
         additional_environment=additional_environment)

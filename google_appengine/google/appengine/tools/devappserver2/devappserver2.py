@@ -372,7 +372,11 @@ def create_command_line_parser():
       'can be a boolean, in which case all modules threadsafe setting will '
       'be overridden or a comma-separated list of module:threadsafe_override '
       'e.g. "default:False,backend:True"')
-  common_group.add_argument('--docker_daemon_url', help=argparse.SUPPRESS)
+  common_group.add_argument('--enable_mvm_logs',
+                            action=boolean_action.BooleanAction,
+                            const=True,
+                            default=False,
+                            help=argparse.SUPPRESS)
 
   # PHP
   php_group = parser.add_argument_group('PHP')
@@ -632,7 +636,7 @@ def create_command_line_parser():
       'decide)')
   misc_group.add_argument(
       '--default_gcs_bucket_name', default=None,
-      help='default Google Cloud Storgage bucket name')
+      help='default Google Cloud Storage bucket name')
 
 
 
@@ -926,8 +930,6 @@ class DevelopmentServer(object):
   @staticmethod
   def _create_vm_config(options):
     vm_config = runtime_config_pb2.VMConfig()
-    if options.docker_daemon_url:
-      vm_config.docker_daemon_url = options.docker_daemon_url
     if options.dart_sdk:
       vm_config.dart_config.dart_sdk = os.path.abspath(options.dart_sdk)
     if options.dart_dev_mode:
@@ -936,6 +938,7 @@ class DevelopmentServer(object):
       vm_config.dart_config.dart_pub_serve_host = options.dart_pub_serve_host
     if options.dart_pub_serve_port:
       vm_config.dart_config.dart_pub_serve_port = options.dart_pub_serve_port
+    vm_config.enable_logs = options.enable_mvm_logs
     return vm_config
 
   @staticmethod

@@ -211,10 +211,16 @@ class InotifyFileWatcher(object):
     """Stop watching the directory for changes."""
     os.close(self._inotify_fd)
 
-  def changes(self):
+  def changes(self, timeout_ms=0):
     """Return paths for changed files and directories.
 
     start() must be called before this method.
+
+    Args:
+      timeout_ms: a timeout in milliseconds on which this watcher will block
+                  waiting for a change. It allows for external polling threads
+                  to react immediately on a change instead of waiting for
+                  a random polling delay.
 
     Returns:
       A set of strings representing file and directory paths that have changed
@@ -222,7 +228,8 @@ class InotifyFileWatcher(object):
     """
     paths = set()
     while True:
-      if not self._inotify_poll.poll(0):
+      # Don't wait to detect subsequent changes after the initial one.
+      if not self._inotify_poll.poll(0 if paths else timeout_ms):
         break
 
       self._inotify_events += os.read(self._inotify_fd, 1024)

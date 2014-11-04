@@ -16,23 +16,33 @@
 #
 """Manages a VM Runtime process running inside of a docker container."""
 
-import httplib
-import json
+import datetime
 import logging
 import os
 import socket
-import urllib
 
 import google
 
 from google.appengine.tools.devappserver2 import application_configuration
 from google.appengine.tools.devappserver2 import http_proxy
 from google.appengine.tools.devappserver2 import instance
+from google.appengine.tools.devappserver2 import log_manager
 from google.appengine.tools.docker import containers
 
 
+_APP_ENGINE_PREFIX = 'google.appengine'
+
+# Number of seconds after a container start before we check if there is
+# any old containers and images to cleanup.
+_CLEANUP_DELAY_SEC = 10.0
+
 _DOCKER_IMAGE_NAME_FORMAT = '{display}.{module}.{version}'
-_DOCKER_CONTAINER_NAME_FORMAT = 'google.appengine.{image_name}.{instance_id}'
+_DOCKER_CONTAINER_NAME_FORMAT = (
+    _APP_ENGINE_PREFIX + '.{image_name}.{instance_id}.{timestamp}')
+
+# This is the number of containers the cleanup process will leave on docker for
+# investigation purposes.
+_CONTAINERS_TO_KEEP = 10
 
 
 class Error(Exception):
@@ -75,15 +85,34 @@ def _GetPortToPublish(port):
   return None
 
 
+def _ContainerName(image_name, instance_id, timestamp=None):
+  """Generates a container name.
+
+  Args:
+    image_name: the base image name.
+    instance_id: the instance # of the module.
+    timestamp: the timestamp as a string you want to generate the name from.
+               If None, it will be the now in the UTC timezone in ISO 8601.
+
+  Returns:
+    the generated container name.
+  """
+  if timestamp is None:
+    # ":" is not allowed in the container names but are optional in
+    # ISO8601.
+    timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H%M%S.%fZ')
+
+  return _DOCKER_CONTAINER_NAME_FORMAT.format(
+      image_name=image_name, instance_id=instance_id, timestamp=timestamp)
+
+
 class VMRuntimeProxy(instance.RuntimeProxy):
   """Manages a VM Runtime process running inside of a docker container."""
 
   DEFAULT_DEBUG_PORT = 5005
-  _LOG_GETTER_IMAGE_NAME = 'log_getter'
-  _LOG_GETTER_SERVER_LINK_NAME = 'log_server'
 
   def __init__(self, docker_client, runtime_config_getter,
-               module_configuration, log_server_container=None,
+               module_configuration,
                default_port=8080, port_bindings=None,
                additional_environment=None):
     """Initializer for VMRuntimeProxy.
@@ -96,9 +125,6 @@ class VMRuntimeProxy(instance.RuntimeProxy):
       module_configuration: An application_configuration.ModuleConfiguration
           instance respresenting the configuration of the module that owns the
           runtime.
-      log_server_container: A containers.Container instance of LogServer
-          container or None and service for getting logs from this container
-          becomes unavailable.
       default_port: int, main port inside of the container that instance is
           listening on.
       port_bindings: dict, Additional port bindings from the container.
@@ -113,7 +139,9 @@ class VMRuntimeProxy(instance.RuntimeProxy):
     self._default_port = default_port
     self._port_bindings = port_bindings
     self._additional_environment = additional_environment
-    self._log_server_container = log_server_container
+    self._log_manager = log_manager.get(
+        self._docker_client,
+        enable_logging=self._runtime_config_getter().vm_config.enable_logs)
     self._container = None
     self._proxy = None
 
@@ -141,79 +169,13 @@ class VMRuntimeProxy(instance.RuntimeProxy):
     return self._proxy.handle(environ, start_response, url_map, match,
                               request_id, request_type)
 
-  def _connect_to_log_server(self, path, query_params):
-    """Sends request to log_server container via http.
-
-    Args:
-      path: string containing path to make a request.
-      query_params: dict with essential parameters for request.
-
-    Returns:
-      A response from a log_server.
-    """
-
-    log_server_container = self._log_server_container
-    host, port = log_server_container.host, log_server_container.port
-    connection = httplib.HTTPConnection(host=host, port=port)
-    runtime_config = self._runtime_config_getter()
-    params = {
-        'instance_id': runtime_config.instance_id,
-        'module_name': self._module_configuration.module_name}
-    for key, value in query_params.iteritems():
-      params[key] = value
-    params = urllib.urlencode(params)
-    headers = {'Content-type': 'application/x-www-form-urlencoded',
-               'Accept': 'text/plain'}
-    connection.request('GET', path, params, headers)
-    response = connection.getresponse()
-    logging.debug('Response from log server: %s %s', response.status,
-                  response.reason)
-    data = response.read()
-    connection.close()
-    return json.loads(data)
-
-  def get_instance_log_file_names(self):
-    if not self._log_server_container:
-      return []
-    return self._connect_to_log_server('/log_file_names', {})
-
-  def get_instance_logs_size(self, log_file_name):
-    if not self._log_server_container:
-      return 0
-    return self._connect_to_log_server('/count',
-                                       {'log_file_name': log_file_name})
-
-  def get_instance_logs(self, log_file_name, count):
-    if not self._log_server_container:
-      return []
-    return self._connect_to_log_server('/', {'log_file_name': log_file_name,
-                                             'count': count})
-
   def _instance_died_unexpectedly(self):
     # TODO: Check if container is still up and running
     return False
 
-  def _build_logs_container(self, external_logs_path, internal_logs_path,
-                            instance_id):
-    """Builds logs container for current instance."""
-
-    environment = {
-        'LOGS_DIR': internal_logs_path,
-        'SERVER_NAME': self._LOG_GETTER_SERVER_LINK_NAME,
-        'MODULE_NAME': self._module_configuration.module_name,
-        'INSTANCE_ID': instance_id,
-    }
-    return containers.Container(
-        self._docker_client,
-        containers.ContainerOptions(
-            image_opts=containers.ImageOptions(tag=self._LOG_GETTER_IMAGE_NAME),
-            environment=environment,
-            volumes={
-                external_logs_path: {'bind': internal_logs_path}
-            },
-            links={self._log_server_container.name:
-                   self._LOG_GETTER_SERVER_LINK_NAME},
-        ))
+  def get_instance_logs(self):
+    # TODO: Handle docker container's logs
+    return ''
 
   def _escape_domain(self, application_external_name):
     return application_external_name.replace(':', '.')
@@ -225,6 +187,12 @@ class VMRuntimeProxy(instance.RuntimeProxy):
       logging.error('Version needs to be specified in your application '
                     'configuration file.')
       raise VersionError()
+
+    self._log_manager.add(
+        self._escape_domain(
+            self._module_configuration.application_external_name),
+        self._module_configuration.module_name,
+        self._module_configuration.major_version, runtime_config.instance_id)
 
     if not dockerfile_dir:
       dockerfile_dir = self._module_configuration.application_root
@@ -300,7 +268,7 @@ class VMRuntimeProxy(instance.RuntimeProxy):
         self._module_configuration.major_version,
         runtime_config.instance_id)
     internal_logs_path = '/var/log/app_engine'
-    container_name = _DOCKER_CONTAINER_NAME_FORMAT.format(
+    container_name = _ContainerName(
         image_name=image_name,
         instance_id=runtime_config.instance_id)
     self._container = containers.Container(
@@ -319,17 +287,11 @@ class VMRuntimeProxy(instance.RuntimeProxy):
             name=container_name
         ))
 
-    if self._log_server_container:
-      self._logs_container = self._build_logs_container(
-          external_logs_path, internal_logs_path, runtime_config.instance_id)
-
     self._container.Start()
-    if self._log_server_container:
-      try:
-        self._logs_container.Start()
-      except containers.ImageError:
-        logging.warning('Image \'log_server\' is not found.'
-                        'Showing logs in admin console is disabled.')
+    # As we add stuff, asynchronously check later for a cleanup.
+    containers.StartDelayedCleanup(
+        self._docker_client, _APP_ENGINE_PREFIX, _CLEANUP_DELAY_SEC,
+        _CONTAINERS_TO_KEEP)
 
     # Print the debug information before connecting to the container
     # as debugging might break the runtime during initialization, and
@@ -360,8 +322,6 @@ class VMRuntimeProxy(instance.RuntimeProxy):
   def quit(self):
     """Kills running container and removes it."""
     self._container.Stop()
-    if self._log_server_container:
-      self._logs_container.Stop()
 
   def PortBinding(self, port):
     """Get the host binding of a container port.

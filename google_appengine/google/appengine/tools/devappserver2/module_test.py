@@ -62,7 +62,8 @@ class ModuleConfigurationStub(object):
                env_variables=None,
                manual_scaling=None,
                basic_scaling=None,
-               vm_health_check=None):
+               vm_health_check=None,
+               application_external_name='app'):
     self.application_root = application_root
     self.application = application
     self.module_name = module_name
@@ -80,6 +81,7 @@ class ModuleConfigurationStub(object):
     self.version_id = '%s:%s.%s' % (module_name, version, '12345')
     self.is_backend = False
     self.vm_health_check = vm_health_check
+    self.application_external_name = application_external_name
 
   def check_for_updates(self):
     return set()
@@ -1459,7 +1461,7 @@ class TestManualScalingModuleAddInstance(unittest.TestCase):
 
   def test_add_with_health_checks(self):
     servr = ManualScalingModuleFacade(instance_factory=self.factory)
-    servr.vm_config = runtime_config_pb2.VMConfig(docker_daemon_url='unused')
+    servr.vm_config = runtime_config_pb2.VMConfig()
     servr.module_configuration.runtime = 'vm'
     servr.module_configuration.vm_health_check = appinfo.VmHealthCheck(
         enable_health_check=True)
@@ -1707,8 +1709,9 @@ class TestManualScalingInstancePoolHandleScriptRequest(unittest.TestCase):
     self.mox.StubOutWithMock(self.manual_module, '_error_response')
 
     self.manual_module._choose_instance(10.0).WithSideEffects(advance_time)
-    self.manual_module._error_response(self.environ, self.start_response,
-                                       503).AndReturn(self.response)
+    self.manual_module._error_response(
+        self.environ, self.start_response, 503, mox.IgnoreArg()).AndReturn(
+            self.response)
     self.mox.ReplayAll()
     self.assertEqual(
         self.response,
@@ -2164,8 +2167,9 @@ class TestBasicScalingInstancePoolHandleScriptRequest(unittest.TestCase):
     self.mox.StubOutWithMock(self.basic_module, '_error_response')
 
     self.basic_module._choose_instance(20).WithSideEffects(self.advance_time)
-    self.basic_module._error_response(self.environ, self.start_response,
-                                      503).AndReturn(self.response)
+    self.basic_module._error_response(
+        self.environ, self.start_response, 503, mox.IgnoreArg()).AndReturn(
+            self.response)
 
     self.mox.ReplayAll()
     self.assertEqual(
@@ -2636,20 +2640,24 @@ class TestInteractiveCommandModule(unittest.TestCase):
     self.mox.VerifyAll()
 
   def test_handle_script_request_timeout(self):
-    self.servr._MAX_REQUEST_WAIT_TIME = 0
-    start_response = start_response_utils.CapturingStartResponse()
+    old_timeout = self.servr._MAX_REQUEST_WAIT_TIME
+    try:
+      self.servr._MAX_REQUEST_WAIT_TIME = 0
+      start_response = start_response_utils.CapturingStartResponse()
 
-    self.mox.ReplayAll()
-    self.assertEqual(
-        ['The command timed-out while waiting for another one to complete'],
-        self.servr._handle_script_request(self.environ,
-                                          start_response,
-                                          self.url_map,
-                                          self.match,
-                                          self.request_id))
-    self.mox.VerifyAll()
-    self.assertEqual('503 Service Unavailable',
-                     start_response.status)
+      self.mox.ReplayAll()
+      self.assertEqual(
+          ['The command timed-out while waiting for another one to complete'],
+          self.servr._handle_script_request(self.environ,
+                                            start_response,
+                                            self.url_map,
+                                            self.match,
+                                            self.request_id))
+      self.mox.VerifyAll()
+      self.assertEqual('503 Service Unavailable',
+                       start_response.status)
+    finally:
+      self.servr._MAX_REQUEST_WAIT_TIME = old_timeout
 
   def test_handle_script_request_restart(self):
     def restart_and_raise(*args):

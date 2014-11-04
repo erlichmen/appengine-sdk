@@ -63,7 +63,7 @@ class GoVMRuntimeProxy(instance.RuntimeProxy):
   """
 
   def __init__(self, docker_client, runtime_config_getter,
-               module_configuration, log_server_container=None):
+               module_configuration):
     """Initializer for VMRuntimeProxy.
 
     Args:
@@ -74,8 +74,6 @@ class GoVMRuntimeProxy(instance.RuntimeProxy):
       module_configuration: An application_configuration.ModuleConfiguration
           instance respresenting the configuration of the module that owns the
           runtime.
-      log_server_container: A containers.Container instance of LogServer
-          container.
     """
     super(GoVMRuntimeProxy, self).__init__()
     self._runtime_config_getter = runtime_config_getter
@@ -88,7 +86,6 @@ class GoVMRuntimeProxy(instance.RuntimeProxy):
         docker_client=docker_client,
         runtime_config_getter=runtime_config_getter,
         module_configuration=module_configuration,
-        log_server_container=log_server_container,
         port_bindings=port_bindings)
 
   def handle(self, environ, start_response, url_map, match, request_id,

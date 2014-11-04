@@ -1261,7 +1261,8 @@ class LogsBufferOld(object):
 
 
 
-LogsBuffer = LogsBufferNew if False else LogsBufferOld
+
+LogsBuffer = LogsBufferOld
 
 
 _global_buffer = LogsBuffer(stderr=True)

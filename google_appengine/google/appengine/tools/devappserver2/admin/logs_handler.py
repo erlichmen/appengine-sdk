@@ -16,66 +16,34 @@
 #
 """A handler that displays logs for instances."""
 
-from google.appengine.api import request_info
+import json
+import os
+
+import google
+import requests
+
+from google.appengine.tools.devappserver2 import log_manager
 from google.appengine.tools.devappserver2.admin import admin_request_handler
 
 
 class LogsHandler(admin_request_handler.AdminRequestHandler):
-  _DEFAULT_SHOW_LINES = 30
+  _REQUIRED_PARAMS = ['app', 'module', 'version', 'instance', 'log_type']
 
   def get(self):
-    params = self.request.params
-    if 'module_name' in params:
-      module_name = params['module_name']
-    else:
-      self.abort(404, detail='module_name should be defined.')
-      return
-
     try:
-      module = self.dispatcher.get_module_by_name(module_name)
-    except request_info.ModuleDoesNotExistError:
-      self.abort(404, detail=('There is no such module with name \'%s\'.' %
-                              (module_name)))
-      return
+      ps = self.request.params
+      params = dict([(p, ps[p]) for p in self._REQUIRED_PARAMS])
+    except KeyError, e:
+      self.abort(404, detail='Missing log request parameter %s.' % e.message)
 
-    if 'instance_id' in params:
-      instance_id = params['instance_id']
-    else:
-      self.abort(404, detail='instance_id should be defined.')
-      return
+    # Forward request to LogServer
+    host = os.environ.get(log_manager.APP_ENGINE_LOG_SERVER_HOST)
+    port = os.environ.get(log_manager.APP_ENGINE_LOG_SERVER_PORT)
+    if not host or not port:
+      self.abort(404, detail='LogServer Host and Port must be set')
 
-    try:
-      instance = module.get_instance(instance_id)
-    except request_info.InvalidInstanceIdError:
-      self.abort(404, detail=('There is no such instance with instance_id'
-                              '%s\'.' % (instance_id)))
-      return
+    r = requests.get('http://{host}:{port}'.format(host=host, port=port),
+                     params=params)
+    params['logs'] = json.loads(r.text)
 
-    log_file_names = instance.get_log_file_names()
-    if 'log_file_name' in params:
-      log_file_name = params['log_file_name']
-      if log_file_name not in log_file_names:
-        self.abort(404, detail=('There is no such log file.'))
-        return
-
-      if 'show_lines' in params:
-        show_lines = int(params['show_lines'])
-      else:
-        self.abort(404, detail=(
-            'Number of requested lines should be specified.'))
-        return
-
-      count_lines = instance.get_logs_size(log_file_name)
-      show_lines = max(0, min(show_lines, count_lines))
-      logs_data = instance.get_logs(log_file_name, show_lines)
-    else:
-      log_file_name = None
-      logs_data = []
-      show_lines = 0
-      count_lines = 0
-
-    values = {'module': module, 'instance': instance, 'logs_data': logs_data,
-              'log_file_name': log_file_name, 'log_file_names': log_file_names,
-              'show_lines': show_lines, 'count_lines': count_lines,
-              'default_show_lines': self._DEFAULT_SHOW_LINES}
-    self.response.write(self.render('instance_logs.html', values))
+    self.response.write(self.render('instance_logs.html', params))

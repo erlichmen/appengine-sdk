@@ -20,15 +20,16 @@ import logging
 
 import google
 
-import docker
-import requests
-
 from google.appengine.api import appinfo
 from google.appengine.tools.devappserver2 import instance
 from google.appengine.tools.devappserver2 import vm_runtime_proxy
 from google.appengine.tools.devappserver2 import vm_runtime_proxy_dart
 from google.appengine.tools.devappserver2 import vm_runtime_proxy_go
 from google.appengine.tools.docker import containers
+
+
+# docker uses requests which logs lots of noise.
+logging.getLogger('requests').setLevel(logging.WARNING)
 
 
 class Error(Exception):
@@ -61,10 +62,6 @@ class VMRuntimeInstanceFactory(instance.InstanceFactory):
 
   # Timeout of HTTP request from docker-py client to docker daemon, in seconds.
   DOCKER_D_REQUEST_TIMEOUT_SECS = 60
-  _LOG_SERVER_PORT = 10500
-  _LOG_SERVER_IMAGE_NAME = 'log_server'
-  _LOG_SERVER_CONTAINER_NAME_FORMAT = (
-      'google.appengine.{image_name}.{module_name}')
 
   def __init__(self, request_data, runtime_config_getter, module_configuration):
     """Initializer for VMRuntimeInstanceFactory.
@@ -79,55 +76,14 @@ class VMRuntimeInstanceFactory(instance.InstanceFactory):
           instance representing the configuration of the module that owns the
           runtime.
     """
-    assert runtime_config_getter().vm_config.HasField('docker_daemon_url'), (
-        'VM runtime requires docker_daemon_url to be specified')
     super(VMRuntimeInstanceFactory, self).__init__(
         request_data,
         8 if runtime_config_getter().threadsafe else 1, 10)
     self._runtime_config_getter = runtime_config_getter
     self._module_configuration = module_configuration
-    docker_daemon_url = runtime_config_getter().vm_config.docker_daemon_url
-    self._docker_client = docker.Client(
-        base_url=docker_daemon_url, version='1.9',
+    self._docker_client = containers.NewDockerClient(
+        version='1.9',
         timeout=self.DOCKER_D_REQUEST_TIMEOUT_SECS)
-    try:
-      self._docker_client.ping()
-    except requests.exceptions.ConnectionError:
-      raise DockerDaemonConnectionError(
-          'Couldn\'t connect to the docker daemon at %s. Please check that the '
-          'docker daemon is running.' % docker_daemon_url)
-
-    self._log_server_container = self.create_log_container(
-        self._LOG_SERVER_PORT)
-
-  def create_log_container(self, port):
-    """Return log_server container instance for this module."""
-
-    container_name = self._LOG_SERVER_CONTAINER_NAME_FORMAT.format(
-        image_name=self._LOG_SERVER_IMAGE_NAME,
-        module_name=self._module_configuration.module_name)
-    return containers.Container(
-        self._docker_client,
-        containers.ContainerOptions(
-            image_opts=containers.ImageOptions(tag=self._LOG_SERVER_IMAGE_NAME),
-            port=port,
-            name=container_name,
-        ))
-
-  def start_log_container(self):
-    if not self._log_server_container:
-      return
-    try:
-      self._log_server_container.Start()
-    except containers.ImageError:
-      logging.warning('Image \'log_server\' is not found.\n'
-                      'Showing logs in admin console is disabled.')
-      self._log_server_container = None
-
-  def stop_log_container(self):
-    if not self._log_server_container:
-      return
-    self._log_server_container.Stop()
 
   def new_instance(self, instance_id, expect_ready_request=False):
     """Create and return a new Instance.
@@ -153,8 +109,7 @@ class VMRuntimeInstanceFactory(instance.InstanceFactory):
         effective_runtime, vm_runtime_proxy.VMRuntimeProxy)
 
     proxy = proxy_class(
-        self._docker_client, runtime_config_getter, self._module_configuration,
-        log_server_container=self._log_server_container)
+        self._docker_client, runtime_config_getter, self._module_configuration)
     return instance.Instance(self.request_data,
                              instance_id,
                              proxy,

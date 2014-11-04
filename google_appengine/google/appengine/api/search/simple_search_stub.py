@@ -959,7 +959,7 @@ class SearchServiceStub(apiproxy_stub.APIProxyStub):
         if (isinstance(expression, float) or
             isinstance(expression, long) or
             isinstance(expression, int)):
-          expr.mutable_value().set_string_value(str(expression))
+          expr.mutable_value().set_string_value(repr(float(expression)))
           expr.mutable_value().set_type(document_pb.FieldValue.NUMBER)
         else:
           expr.mutable_value().set_string_value(expression)
