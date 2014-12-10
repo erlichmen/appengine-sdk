@@ -1002,13 +1002,16 @@ goog.asserts.assertElement = function(value, opt_message, var_args) {
   return value;
 };
 goog.asserts.assertInstanceof = function(value, type, opt_message, var_args) {
-  !goog.asserts.ENABLE_ASSERTS || value instanceof type || goog.asserts.doAssertFailure_("instanceof check failed.", null, opt_message, Array.prototype.slice.call(arguments, 3));
+  !goog.asserts.ENABLE_ASSERTS || value instanceof type || goog.asserts.doAssertFailure_("Expected instanceof %s but got %s.", [goog.asserts.getType_(type), goog.asserts.getType_(value)], opt_message, Array.prototype.slice.call(arguments, 3));
   return value;
 };
 goog.asserts.assertObjectPrototypeIsIntact = function() {
   for (var key in Object.prototype) {
     goog.asserts.fail(key + " should not be enumerable in Object.prototype.");
   }
+};
+goog.asserts.getType_ = function(value) {
+  return value instanceof Function ? value.displayName || value.name || "unknown type name" : value instanceof Object ? value.constructor.displayName || value.constructor.name || Object.prototype.toString.call(value) : null === value ? "null" : typeof value;
 };
 goog.array = {};
 goog.NATIVE_ARRAY_PROTOTYPES = goog.TRUSTED_SITE;
@@ -2749,17 +2752,17 @@ goog.dom.isNodeList = function(val) {
   }
   return!1;
 };
-goog.dom.getAncestorByTagNameAndClass = function(element, opt_tag, opt_class) {
+goog.dom.getAncestorByTagNameAndClass = function(element, opt_tag, opt_class, opt_maxSearchSteps) {
   if (!opt_tag && !opt_class) {
     return null;
   }
   var tagName = opt_tag ? opt_tag.toUpperCase() : null;
   return goog.dom.getAncestor(element, function(node) {
     return(!tagName || node.nodeName == tagName) && (!opt_class || goog.isString(node.className) && goog.array.contains(node.className.split(/\s+/), opt_class));
-  }, !0);
+  }, !0, opt_maxSearchSteps);
 };
-goog.dom.getAncestorByClass = function(element, className) {
-  return goog.dom.getAncestorByTagNameAndClass(element, null, className);
+goog.dom.getAncestorByClass = function(element, className, opt_maxSearchSteps) {
+  return goog.dom.getAncestorByTagNameAndClass(element, null, className, opt_maxSearchSteps);
 };
 goog.dom.getAncestor = function(element, matcher, opt_includeNode, opt_maxSearchSteps) {
   opt_includeNode || (element = element.parentNode);
@@ -3729,6 +3732,11 @@ goog.functions.nth = function(n) {
 };
 goog.functions.withReturnValue = function(f, retValue) {
   return goog.functions.sequence(f, goog.functions.constant(retValue));
+};
+goog.functions.equalTo = function(value, opt_useLooseComparison) {
+  return function(other) {
+    return opt_useLooseComparison ? value == other : value === other;
+  };
 };
 goog.functions.compose = function(fn, var_args) {
   var functions = arguments, length = functions.length;
@@ -4968,7 +4976,12 @@ goog.debug.Logger.prototype.log = function(level, msg, opt_exception) {
 };
 goog.debug.Logger.prototype.getLogRecord = function(level, msg, opt_exception, opt_fnStackContext) {
   var logRecord = goog.debug.LogBuffer.isBufferingEnabled() ? goog.debug.LogBuffer.getInstance().addRecord(level, msg, this.name_) : new goog.debug.LogRecord(level, String(msg), this.name_);
-  opt_exception && (logRecord.setException(opt_exception), logRecord.setExceptionText(goog.debug.exposeException(opt_exception, opt_fnStackContext || goog.debug.Logger.prototype.getLogRecord)));
+  if (opt_exception) {
+    var context;
+    context = goog.STRICT_MODE_COMPATIBLE ? opt_fnStackContext || goog.debug.Logger.prototype.getLogRecord : opt_fnStackContext || arguments.callee.caller;
+    logRecord.setException(opt_exception);
+    logRecord.setExceptionText(goog.debug.exposeException(opt_exception, context));
+  }
   return logRecord;
 };
 goog.debug.Logger.prototype.severe = function(msg, opt_exception) {
@@ -5082,11 +5095,11 @@ goog.async.throwException = function(exception) {
     throw exception;
   }, 0);
 };
-goog.async.nextTick = function(callback, opt_context) {
+goog.async.nextTick = function(callback, opt_context, opt_useSetImmediate) {
   var cb = callback;
   opt_context && (cb = goog.bind(callback, opt_context));
   cb = goog.async.nextTick.wrapCallback_(cb);
-  !goog.isFunction(goog.global.setImmediate) || goog.global.Window && goog.global.Window.prototype.setImmediate == goog.global.setImmediate ? (goog.async.nextTick.setImmediate_ || (goog.async.nextTick.setImmediate_ = goog.async.nextTick.getSetImmediateEmulator_()), goog.async.nextTick.setImmediate_(cb)) : goog.global.setImmediate(cb);
+  !goog.isFunction(goog.global.setImmediate) || !opt_useSetImmediate && goog.global.Window && goog.global.Window.prototype.setImmediate == goog.global.setImmediate ? (goog.async.nextTick.setImmediate_ || (goog.async.nextTick.setImmediate_ = goog.async.nextTick.getSetImmediateEmulator_()), goog.async.nextTick.setImmediate_(cb)) : goog.global.setImmediate(cb);
 };
 goog.async.nextTick.getSetImmediateEmulator_ = function() {
   var Channel = goog.global.MessageChannel;
@@ -5450,7 +5463,7 @@ goog.Promise.prototype.executeCallback_ = function(callbackEntry, state, result)
   if (state == goog.Promise.State_.FULFILLED) {
     callbackEntry.onFulfilled(result);
   } else {
-    this.removeUnhandledRejection_(), callbackEntry.onRejected(result);
+    callbackEntry.child && this.removeUnhandledRejection_(), callbackEntry.onRejected(result);
   }
 };
 goog.Promise.prototype.addStackTrace_ = function(err) {

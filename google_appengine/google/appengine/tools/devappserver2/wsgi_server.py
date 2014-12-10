@@ -110,7 +110,8 @@ class SelectThread(object):
     # snapshotted by the select thread without needing to copy.
     self._file_descriptors = frozenset()
     self._file_descriptor_to_callback = {}
-    self._select_thread = threading.Thread(target=self._loop_forever)
+    self._select_thread = threading.Thread(
+        target=self._loop_forever, name='WSGI select')
     self._select_thread.daemon = True
 
   def start(self):
@@ -272,6 +273,7 @@ class _SingleAddressWsgiServer(wsgiserver.CherryPyWSGIServer):
 
 
 class WsgiServer(object):
+
   def __init__(self, host, app):
     """Constructs a WsgiServer.
 

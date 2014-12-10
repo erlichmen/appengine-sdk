@@ -25,6 +25,7 @@ import google
 
 from google.appengine.tools.devappserver2 import application_configuration
 from google.appengine.tools.devappserver2 import http_proxy
+from google.appengine.tools.devappserver2 import http_runtime_constants
 from google.appengine.tools.devappserver2 import instance
 from google.appengine.tools.devappserver2 import log_manager
 from google.appengine.tools.docker import containers
@@ -227,7 +228,8 @@ class VMRuntimeProxy(instance.RuntimeProxy):
         'GAE_MODULE_INSTANCE': runtime_config.instance_id,
         'GAE_SERVER_PORT': runtime_config.server_port,
         'MODULE_YAML_PATH': os.path.basename(
-            self._module_configuration.config_path)
+            self._module_configuration.config_path),
+        'SERVER_SOFTWARE': http_runtime_constants.SERVER_SOFTWARE
     }
     if self._additional_environment:
       environment.update(self._additional_environment)

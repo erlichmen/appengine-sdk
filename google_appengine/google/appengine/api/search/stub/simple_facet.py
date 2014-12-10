@@ -55,7 +55,8 @@ class SimpleFacet(object):
         range_pair = (
             float(range_pb.start()) if range_pb.has_start() else None,
             float(range_pb.end()) if range_pb.has_end() else None)
-        facet_obj.AddValue(range_pb.name(), 0, refinement=range_pair)
+        facet_obj.AddValue(self._GetFacetLabel(range_pb),
+                           0, refinement=range_pair)
 
     if not manual_facet_map and not self._params.auto_discover_facet_count():
       return
@@ -100,7 +101,8 @@ class SimpleFacet(object):
                     float(range_pb.end()) if range_pb.has_end() else None)
                 if ((range_pair[0] is None or facet_value >= range_pair[0]) and
                     (range_pair[1] is None or facet_value < range_pair[1])):
-                  facet_obj.AddValue(range_pb.name(), refinement=range_pair)
+                  facet_obj.AddValue(self._GetFacetLabel(range_pb),
+                                     refinement=range_pair)
             elif manual_facet_req.value_constraint_list():
               for constraint in manual_facet_req.value_constraint_list():
                 if facet_value == float(constraint):
@@ -132,7 +134,7 @@ class SimpleFacet(object):
 
 
     if facet.min is not None:
-      facet.AddValue('%s,%s' % (facet.min, facet.max), facet.min_max_count,
+      facet.AddValue('[%s,%s)' % (facet.min, facet.max), facet.min_max_count,
                      (facet.min, facet.max))
     facet_result_pb.set_name(facet.name)
     for value in facet.GetTopValues(facet.value_limit):
@@ -152,6 +154,15 @@ class SimpleFacet(object):
       ref_pb.set_name(facet.name)
       value_pb.set_name(str(value.label))
       value_pb.set_count(value.count)
+
+  def _GetFacetLabel(self, range_pb):
+    if range_pb.has_name():
+      return range_pb.name()
+    else:
+      return '[%s,%s)' % (str(float(range_pb.start()))
+                          if range_pb.has_start() else '-Infinity',
+                          str(float(range_pb.end()))
+                          if range_pb.has_end() else 'Infinity')
 
   def RefineResults(self, results):
     """Returns refined results using facet refinement parameters."""

@@ -35,7 +35,11 @@ from google.appengine.api import appinfo_includes
 from google.appengine.api import backendinfo
 from google.appengine.api import dispatchinfo
 from google.appengine.client.services import port_manager
+from google.appengine.tools import app_engine_web_xml_parser
+from google.appengine.tools import java_quickstart
 from google.appengine.tools import queue_xml_parser
+from google.appengine.tools import web_xml_parser
+from google.appengine.tools import xml_parser_utils
 from google.appengine.tools import yaml_translator
 from google.appengine.tools.devappserver2 import errors
 
@@ -141,13 +145,18 @@ class ModuleConfiguration(object):
     self._forwarded_ports = {}
     if self.runtime == 'vm':
       vm_settings = self._app_info_external.vm_settings
+      ports = None
       if vm_settings:
         ports = vm_settings.get('forwarded_ports')
-        if ports:
-          logging.debug('setting forwarded ports %s', ports)
-          pm = port_manager.PortManager()
-          pm.Add(ports, 'forwarded')
-          self._forwarded_ports = pm.GetAllMappedPorts()
+      if not ports:
+        if (self._app_info_external.network and
+            self._app_info_external.network.forwarded_ports):
+          ports = ','.join(self._app_info_external.network.forwarded_ports)
+      if ports:
+        logging.debug('setting forwarded ports %s', ports)
+        pm = port_manager.PortManager()
+        pm.Add(ports, 'forwarded')
+        self._forwarded_ports = pm.GetAllMappedPorts()
 
     self._translate_configuration_files()
 
@@ -390,17 +399,34 @@ class ModuleConfiguration(object):
     """
     with open(app_engine_web_xml_path) as f:
       app_engine_web_xml_str = f.read()
+    app_engine_web_xml = (
+        app_engine_web_xml_parser.AppEngineWebXmlParser().ProcessXml(
+            app_engine_web_xml_str))
+
+    quickstart = xml_parser_utils.BooleanValue(
+        app_engine_web_xml.beta_settings.get('java_quickstart', 'false'))
+
     web_inf_dir = os.path.dirname(app_engine_web_xml_path)
-    web_xml_path = os.path.join(web_inf_dir, 'web.xml')
-    with open(web_xml_path) as f:
-      web_xml_str = f.read()
+    if quickstart:
+      app_dir = os.path.dirname(web_inf_dir)
+      web_xml_str, web_xml_path = java_quickstart.quickstart_generator(app_dir)
+      webdefault_xml_str = java_quickstart.get_webdefault_xml()
+      web_xml_str = java_quickstart.remove_mappings(
+          web_xml_str, webdefault_xml_str)
+    else:
+      web_xml_path = os.path.join(web_inf_dir, 'web.xml')
+      with open(web_xml_path) as f:
+        web_xml_str = f.read()
+
     has_jsps = False
     for _, _, filenames in os.walk(self.application_root):
       if any(f.endswith('.jsp') for f in filenames):
         has_jsps = True
         break
+
+    web_xml = web_xml_parser.WebXmlParser().ProcessXml(web_xml_str, has_jsps)
     app_yaml_str = yaml_translator.TranslateXmlToYamlForDevAppServer(
-        app_engine_web_xml_str, web_xml_str, has_jsps, self.application_root)
+        app_engine_web_xml, web_xml, self.application_root)
     config = appinfo.LoadSingleAppInfo(app_yaml_str)
     return config, [app_engine_web_xml_path, web_xml_path]
 

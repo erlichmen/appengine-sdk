@@ -173,6 +173,52 @@ class TestModuleConfiguration(unittest.TestCase):
     self.assertEqual({'/appdir/app.yaml': 10}, config._mtimes)
     self.assertEqual(info.vm_health_check, config.vm_health_check)
 
+  def test_vm_app_yaml_configuration_network(self):
+    manual_scaling = appinfo.ManualScaling()
+    vm_settings = appinfo.VmSettings()
+    vm_settings['vm_runtime'] = 'myawesomeruntime'
+    network = appinfo.Network()
+    network.forwarded_ports = ['49111:49111', '5002:49112', '8000']
+    health_check = appinfo.VmHealthCheck()
+    health_check.enable_health_check = False
+    info = appinfo.AppInfoExternal(
+        application='app',
+        module='module1',
+        version='1',
+        runtime='vm',
+        vm_settings=vm_settings,
+        threadsafe=False,
+        manual_scaling=manual_scaling,
+        vm_health_check=health_check,
+        network=network
+    )
+
+    appinfo_includes.ParseAndReturnIncludePaths(mox.IgnoreArg()).AndReturn(
+        (info, []))
+    os.path.getmtime('/appdir/app.yaml').AndReturn(10)
+
+    self.mox.ReplayAll()
+    config = application_configuration.ModuleConfiguration('/appdir/app.yaml')
+
+    self.mox.VerifyAll()
+    self.assertEqual(os.path.realpath('/appdir'), config.application_root)
+    self.assertEqual(os.path.realpath('/appdir/app.yaml'), config.config_path)
+    self.assertEqual('dev~app', config.application)
+    self.assertEqual('app', config.application_external_name)
+    self.assertEqual('dev', config.partition)
+    self.assertEqual('module1', config.module_name)
+    self.assertEqual('1', config.major_version)
+    self.assertRegexpMatches(config.version_id, r'module1:1\.\d+')
+    self.assertEqual('vm', config.runtime)
+    self.assertEqual(vm_settings['vm_runtime'], config.effective_runtime)
+    self.assertItemsEqual(
+        {49111: 49111, 5002: 49112, 8000: 8000},
+        config.forwarded_ports)
+    self.assertFalse(config.threadsafe)
+    self.assertEqual(manual_scaling, config.manual_scaling)
+    self.assertEqual({'/appdir/app.yaml': 10}, config._mtimes)
+    self.assertEqual(info.vm_health_check, config.vm_health_check)
+
   def test_vm_no_version(self):
     manual_scaling = appinfo.ManualScaling()
     info = appinfo.AppInfoExternal(
@@ -703,14 +749,14 @@ class TestBackendConfiguration(unittest.TestCase):
                                                  max_pending_latency='2.0s',
                                                  min_idle_instances=1,
                                                  max_idle_instances=2)
-    vm_settings = appinfo.VmSettings()
-    vm_settings['vm_runtime'] = 'myawesomeruntime'
+    beta_settings = appinfo.BetaSettings()
+    beta_settings['vm_runtime'] = 'myawesomeruntime'
     info = appinfo.AppInfoExternal(
         application='app',
         module='module1',
         version='1',
         runtime='vm',
-        vm_settings=vm_settings,
+        beta_settings=beta_settings,
         threadsafe=False,
         automatic_scaling=automatic_scaling,
     )
@@ -737,7 +783,7 @@ class TestBackendConfiguration(unittest.TestCase):
     self.assertEqual('1', config.major_version)
     self.assertRegexpMatches(config.version_id, r'static:1\.\d+')
     self.assertEqual('vm', config.runtime)
-    self.assertEqual(vm_settings['vm_runtime'], config.effective_runtime)
+    self.assertEqual(beta_settings['vm_runtime'], config.effective_runtime)
     self.assertFalse(config.threadsafe)
     # Resident backends are assigned manual scaling.
     self.assertEqual(None, config.automatic_scaling)

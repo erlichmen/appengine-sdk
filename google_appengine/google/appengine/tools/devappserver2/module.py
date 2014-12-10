@@ -116,6 +116,9 @@ _TIMEOUT_HTML = '<HTML><BODY>503 - This request has timed out.</BODY></HTML>'
 # optimized the vm_engine reload.
 _VMENGINE_SLOWDOWN_FACTOR = 2
 
+# polling time on module changes.
+_CHANGE_POLLING_MS = 1000
+
 
 def _static_files_regex_from_handlers(handlers):
   patterns = []
@@ -371,20 +374,21 @@ class Module(object):
     for inst in instances_to_quit:
       inst.quit(allow_async=True)
 
-  def _handle_changes(self):
+  def _handle_changes(self, timeout=0):
     """Handle file or configuration changes."""
     # Always check for config and file changes because checking also clears
     # pending changes.
     config_changes = self._module_configuration.check_for_updates()
-    file_changes = self._watcher.changes()
     if application_configuration.HANDLERS_CHANGED in config_changes:
       handlers = self._create_url_handlers()
       with self._handler_lock:
         self._handlers = handlers
 
+    file_changes = self._watcher.changes(timeout)
     if file_changes:
       logging.info(
-          'Detected file changes:\n  %s', '\n  '.join(sorted(file_changes)))
+          '[%s] Detected file changes:\n  %s', self.name,
+          '\n  '.join(sorted(file_changes)))
       self._instance_factory.files_changed()
 
     if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES:
@@ -580,6 +584,11 @@ class Module(object):
   def effective_runtime(self):
     """Effective_runtime property for this module."""
     return self._module_configuration.effective_runtime
+
+  @property
+  def mvm_logs_enabled(self):
+    """Returns True iff it's a Managed VM module and logs are enabled."""
+    return self._vm_config and self._vm_config.enable_logs
 
   @property
   def supports_interactive_commands(self):
@@ -1168,7 +1177,8 @@ class AutoScalingModule(Module):
 
     self._condition = threading.Condition()  # Protects instance state.
     self._instance_adjustment_thread = threading.Thread(
-        target=self._loop_adjusting_instances)
+        target=self._loop_adjusting_instances,
+        name='Instance Adjustment')
 
   def start(self):
     """Start background management of the Module."""
@@ -1478,9 +1488,8 @@ class AutoScalingModule(Module):
     while not self._quit_event.is_set():
       if self.ready:
         if self._automatic_restarts:
-          self._handle_changes()
+          self._handle_changes(_CHANGE_POLLING_MS)
         self._adjust_instances()
-      self._quit_event.wait(timeout=1)
 
   def __call__(self, environ, start_response):
     return self._handle_request(environ, start_response)
@@ -1610,7 +1619,7 @@ class ManualScalingModule(Module):
     self._instances_change_lock = threading.RLock()
 
     self._change_watcher_thread = threading.Thread(
-        target=self._loop_watching_for_changes)
+        target=self._loop_watching_for_changes, name='Change Watcher')
 
   def start(self):
     """Start background management of the Module."""
@@ -1631,11 +1640,11 @@ class ManualScalingModule(Module):
   def quit(self):
     """Stops the Module."""
     self._quit_event.set()
-    self._change_watcher_thread.join()
     # The instance adjustment thread depends on the balanced module and the
     # watcher so wait for it exit before quitting them.
     if self._watcher:
       self._watcher.quit()
+    self._change_watcher_thread.join()
     self._balanced_module.quit()
     for wsgi_servr in self._wsgi_servers:
       wsgi_servr.quit()
@@ -1857,20 +1866,21 @@ class ManualScalingModule(Module):
         self._condition.wait(timeout_time - time.time())
       return None
 
-  def _handle_changes(self):
+  def _handle_changes(self, timeout=0):
     """Handle file or configuration changes."""
     # Always check for config and file changes because checking also clears
     # pending changes.
     config_changes = self._module_configuration.check_for_updates()
-    file_changes = self._watcher.changes()
     if application_configuration.HANDLERS_CHANGED in config_changes:
       handlers = self._create_url_handlers()
       with self._handler_lock:
         self._handlers = handlers
 
+    file_changes = self._watcher.changes(timeout)
     if file_changes:
       logging.info(
-          'Detected file changes:\n  %s', '\n  '.join(sorted(file_changes)))
+          '[%s] Detected file changes:\n  %s', self.name,
+          '\n  '.join(sorted(file_changes)))
       self._instance_factory.files_changed()
 
     if config_changes & _RESTART_INSTANCES_CONFIG_CHANGES:
@@ -1886,8 +1896,7 @@ class ManualScalingModule(Module):
     while not self._quit_event.is_set():
       if self.ready:
         if self._automatic_restarts:
-          self._handle_changes()
-      self._quit_event.wait(timeout=1)
+          self._handle_changes(_CHANGE_POLLING_MS)
 
   def get_num_instances(self):
     with self._instances_change_lock:
@@ -2197,7 +2206,8 @@ class BasicScalingModule(Module):
     self._condition = threading.Condition()  # Protects instance state.
 
     self._change_watcher_thread = threading.Thread(
-        target=self._loop_watching_for_changes_and_idle_instances)
+        target=self._loop_watching_for_changes_and_idle_instances,
+        name='Change Watcher')
 
   def start(self):
     """Start background management of the Module."""
@@ -2420,18 +2430,18 @@ class BasicScalingModule(Module):
       inst.wait(timeout_time)
     return inst
 
-  def _handle_changes(self):
+  def _handle_changes(self, timeout=0):
     """Handle file or configuration changes."""
     # Always check for config and file changes because checking also clears
     # pending changes.
     config_changes = self._module_configuration.check_for_updates()
-    file_changes = self._watcher.changes()
 
     if application_configuration.HANDLERS_CHANGED in config_changes:
       handlers = self._create_url_handlers()
       with self._handler_lock:
         self._handlers = handlers
 
+    file_changes = self._watcher.changes(timeout)
     if file_changes:
       self._instance_factory.files_changed()
 
@@ -2447,8 +2457,7 @@ class BasicScalingModule(Module):
       if self.ready:
         self._shutdown_idle_instances()
         if self._automatic_restarts:
-          self._handle_changes()
-      self._quit_event.wait(timeout=1)
+          self._handle_changes(_CHANGE_POLLING_MS)
 
   def _shutdown_idle_instances(self):
     instances_to_stop = []

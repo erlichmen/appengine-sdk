@@ -997,6 +997,8 @@ def _AddMergeFromMethod(cls):
           field_value.MergeFrom(value)
       else:
         self._fields[field] = value
+        if field.containing_oneof:
+          self._UpdateOneofState(field)
 
     if msg._unknown_fields:
       if not self._unknown_fields:

@@ -1166,7 +1166,7 @@ class TestAutoScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_no_changes(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.servr._maybe_restart_instances(config_changed=False,
                                         file_changed=False)
     self.mox.ReplayAll()
@@ -1175,7 +1175,7 @@ class TestAutoScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_irrelevant_config_change(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.servr._maybe_restart_instances(config_changed=False,
                                         file_changed=False)
 
@@ -1186,7 +1186,7 @@ class TestAutoScalingInstancePoolHandleChanges(unittest.TestCase):
   def test_restart_config_change(self):
     conf_change = frozenset([application_configuration.ENV_VARIABLES_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.instance_factory.configuration_changed(conf_change)
     self.servr._maybe_restart_instances(config_changed=True, file_changed=False)
 
@@ -1197,7 +1197,7 @@ class TestAutoScalingInstancePoolHandleChanges(unittest.TestCase):
   def test_handler_change(self):
     conf_change = frozenset([application_configuration.HANDLERS_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.servr._create_url_handlers()
     self.instance_factory.configuration_changed(conf_change)
     self.servr._maybe_restart_instances(config_changed=True, file_changed=False)
@@ -1208,7 +1208,7 @@ class TestAutoScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_file_change(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn({'-'})
+    self.servr._watcher.changes(0).AndReturn({'-'})
     self.instance_factory.files_changed()
     self.servr._maybe_restart_instances(config_changed=False, file_changed=True)
 
@@ -1316,7 +1316,7 @@ class TestAutoScalingInstancePoolLoopAdjustingInstances(unittest.TestCase):
     self.servr._instances.add(inst2)
     self.servr._instances.add(inst3)
 
-    self.servr._handle_changes()
+    self.servr._handle_changes(1000)
 
     def do_quit(*unused_args):
       self.servr._quit_event.set()
@@ -1930,7 +1930,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_no_changes(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
 
     self.mox.ReplayAll()
     self.servr._handle_changes()
@@ -1938,7 +1938,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_irrelevant_config_change(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
 
     self.mox.ReplayAll()
     self.servr._handle_changes()
@@ -1947,7 +1947,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
   def test_restart_config_change(self):
     conf_change = frozenset([application_configuration.ENV_VARIABLES_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.instance_factory.configuration_changed(conf_change)
     self.servr.restart()
 
@@ -1958,7 +1958,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
   def test_handler_change(self):
     conf_change = frozenset([application_configuration.HANDLERS_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.servr._create_url_handlers()
     self.instance_factory.configuration_changed(conf_change)
 
@@ -1970,7 +1970,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_file_change(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn({'-'})
+    self.servr._watcher.changes(0).AndReturn({'-'})
     self.instance_factory.files_changed()
     self.servr.restart()
 
@@ -1982,7 +1982,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
     self.servr._suspended = True
     conf_change = frozenset([application_configuration.ENV_VARIABLES_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.instance_factory.configuration_changed(conf_change)
 
     self.mox.ReplayAll()
@@ -1993,7 +1993,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
     self.servr._suspended = True
     conf_change = frozenset([application_configuration.HANDLERS_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.servr._create_url_handlers()
     self.instance_factory.configuration_changed(conf_change)
 
@@ -2004,7 +2004,7 @@ class TestManualScalingInstancePoolHandleChanges(unittest.TestCase):
   def test_file_change_suspended(self):
     self.servr._suspended = True
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn({'-'})
+    self.servr._watcher.changes(0).AndReturn({'-'})
     self.instance_factory.files_changed()
 
     self.mox.ReplayAll()
@@ -2445,7 +2445,7 @@ class TestBasicScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_no_changes(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
 
     self.mox.ReplayAll()
     self.servr._handle_changes()
@@ -2453,7 +2453,7 @@ class TestBasicScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_irrelevant_config_change(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
 
     self.mox.ReplayAll()
     self.servr._handle_changes()
@@ -2462,7 +2462,7 @@ class TestBasicScalingInstancePoolHandleChanges(unittest.TestCase):
   def test_restart_config_change(self):
     conf_change = frozenset([application_configuration.ENV_VARIABLES_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.instance_factory.configuration_changed(conf_change)
     self.servr.restart()
 
@@ -2473,7 +2473,7 @@ class TestBasicScalingInstancePoolHandleChanges(unittest.TestCase):
   def test_handler_change(self):
     conf_change = frozenset([application_configuration.HANDLERS_CHANGED])
     self.servr._module_configuration.check_for_updates().AndReturn(conf_change)
-    self.servr._watcher.changes().AndReturn(set())
+    self.servr._watcher.changes(0).AndReturn(set())
     self.servr._create_url_handlers()
     self.instance_factory.configuration_changed(conf_change)
     self.servr.restart()
@@ -2484,7 +2484,7 @@ class TestBasicScalingInstancePoolHandleChanges(unittest.TestCase):
 
   def test_file_change(self):
     self.servr._module_configuration.check_for_updates().AndReturn(frozenset())
-    self.servr._watcher.changes().AndReturn({'-'})
+    self.servr._watcher.changes(0).AndReturn({'-'})
     self.instance_factory.files_changed().AndReturn(True)
     self.servr.restart()
 

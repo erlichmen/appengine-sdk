@@ -3348,11 +3348,11 @@ class DatastoreStub(object):
       self._index_config_updater.UpdateIndexConfig()
 
 
-class StubQueryConverter(object):
+class StubQueryConverter(datastore_pbs._QueryConverter):
   """Converter for v3 and v4 queries suitable for use in stubs."""
 
   def __init__(self, entity_converter):
-    self._entity_converter = entity_converter
+    super(StubQueryConverter, self).__init__(entity_converter)
 
   def v4_to_v3_compiled_cursor(self, v4_cursor, v3_compiled_cursor):
     """Converts a v4 cursor string to a v3 CompiledCursor.
@@ -3500,18 +3500,15 @@ class StubQueryConverter(object):
       get_property_filter = self.__add_property_filter
 
     if v3_query.has_ancestor():
-      self.__v3_query_to_v4_ancestor_filter(v3_query,
-                                            get_property_filter(v4_query))
+      self._v3_query_to_v4_ancestor_filter(v3_query,
+                                           get_property_filter(v4_query))
     for v3_filter in v3_query.filter_list():
-      self.__v3_filter_to_v4_property_filter(v3_filter,
-                                             get_property_filter(v4_query))
+      self._v3_filter_to_v4_property_filter(v3_filter,
+                                            get_property_filter(v4_query))
 
 
     for v3_order in v3_query.order_list():
-      v4_order = v4_query.add_order()
-      v4_order.mutable_property().set_name(v3_order.property())
-      if v3_order.has_direction():
-        v4_order.set_direction(v3_order.direction())
+      self.v3_order_to_v4_order(v3_order, v4_query.add_order())
 
   def __get_property_filter(self, v4_query):
     """Returns the PropertyFilter from the query's top-level filter."""
@@ -3558,54 +3555,17 @@ class StubQueryConverter(object):
             not v4_property_filter.value().list_value_list(),
             ('unsupported value type, %s, in property filter'
              ' on "%s"' % ('list_value', property_name)))
-        prop = v3_filter.add_property()
-        prop.set_multiple(False)
-        prop.set_name(property_name)
-        self._entity_converter.v4_value_to_v3_property_value(
-            v4_property_filter.value(), prop.mutable_value())
+        self._entity_converter.v4_to_v3_property(property_name,
+                                                 False,
+                                                 False,
+                                                 v4_property_filter.value(),
+                                                 v3_filter.add_property())
     elif v4_filter.has_composite_filter():
       datastore_pbs.check_conversion((v4_filter.composite_filter().operator()
                                       == datastore_v4_pb.CompositeFilter.AND),
                                      'unsupported composite property operator')
       for v4_sub_filter in v4_filter.composite_filter().filter_list():
         self.__populate_v3_filters(v4_sub_filter, v3_query)
-
-  def __v3_filter_to_v4_property_filter(self, v3_filter, v4_property_filter):
-    """Converts a v3 Filter to a v4 PropertyFilter.
-
-    Args:
-      v3_filter: a datastore_pb.Filter
-      v4_property_filter: a datastore_v4_pb.PropertyFilter to populate
-
-    Raises:
-      InvalidConversionError if the filter cannot be converted
-    """
-    datastore_pbs.check_conversion(v3_filter.property_size() == 1,
-                                   'invalid filter')
-    datastore_pbs.check_conversion(v3_filter.op() <= 5,
-                                   'unsupported filter op: %d' % v3_filter.op())
-    v4_property_filter.Clear()
-    v4_property_filter.set_operator(v3_filter.op())
-    v4_property_filter.mutable_property().set_name(v3_filter.property(0).name())
-    self._entity_converter.v3_property_to_v4_value(
-        v3_filter.property(0), True, v4_property_filter.mutable_value())
-
-  def __v3_query_to_v4_ancestor_filter(self, v3_query, v4_property_filter):
-    """Converts a v3 Query to a v4 ancestor PropertyFilter.
-
-    Args:
-      v3_query: a datastore_pb.Query
-      v4_property_filter: a datastore_v4_pb.PropertyFilter to populate
-    """
-    v4_property_filter.Clear()
-    v4_property_filter.set_operator(
-        datastore_v4_pb.PropertyFilter.HAS_ANCESTOR)
-    prop = v4_property_filter.mutable_property()
-    prop.set_name(datastore_pbs.PROPERTY_NAME_KEY)
-    self._entity_converter.v3_to_v4_key(
-        v3_query.ancestor(),
-        v4_property_filter.mutable_value().mutable_key_value())
-
 
 
 __query_converter = StubQueryConverter(datastore_pbs.get_entity_converter())
